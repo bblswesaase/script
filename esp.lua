@@ -1,274 +1,170 @@
--- Modern ESP (name/health/distance + tracers + boxes + head dot)
--- Inspired by Exunys AirHub WallHack but simplified & optimized 2026
--- Usage: paste into executor → toggle with getgenv().ESP.Enabled = true
+-- Tracers Only - Minimal & Clean (2025-2026)
+-- No ESP text / boxes / head dots / chams — just lines to players
 
-getgenv().ESP = {
-	Enabled      = false,
-	TeamCheck    = true,
-	AliveCheck   = true,
-
-	-- Visual toggles
-	ShowName     = true,
-	ShowHealth   = true,
-	ShowDistance = true,
-
-	Tracers      = true,
-	TracerType   = "Bottom", -- "Bottom", "Center", "Mouse"
-	TracerColor  = Color3.fromRGB(255, 100, 100),
-	TracerThick  = 1.5,
-	TracerTrans  = 0.7,
-
-	Box2D        = true,          -- simple 2D box
-	BoxColor     = Color3.fromRGB(255, 255, 100),
-	BoxThick     = 1.5,
-	BoxFilled    = false,
-
-	HeadDot      = true,
-	HeadDotColor = Color3.fromRGB(255, 50, 50),
-	HeadDotSize  = 6,
-
-	TextSize     = 13,
-	TextColor    = Color3.fromRGB(255, 255, 255),
-	TextOutline  = true,
-	TextOutlineColor = Color3.fromRGB(0,0,0),
+getgenv().TracersOnly = {
+    Enabled       = false,
+    TeamCheck     = true,           -- true = hide teammates
+    AliveCheck    = true,           -- true = hide dead players
+    
+    TracerType    = "Bottom",       -- "Bottom", "Center", "Mouse"
+    Color         = Color3.fromRGB(255, 80, 80),
+    Thickness     = 1.5,
+    Transparency  = 0.65,
+    
+    -- Advanced (optional)
+    MaxDistance   = 2000,           -- hide very far players (studs)
 }
 
--- Services & shortcuts
-local Players       = game:GetService("Players")
-local RunService    = game:GetService("RunService")
-local UserInput     = game:GetService("UserInputService")
-local LocalPlayer   = Players.LocalPlayer
-local Camera        = workspace.CurrentCamera
+-- Services
+local Players    = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS        = game:GetService("UserInputService")
+local lp         = Players.LocalPlayer
+local cam        = workspace.CurrentCamera
 
-local drawings = {}
-local connections = {}
+local tracers    = {}      -- player → Drawing Line
+local connections = {}     -- cleanup table
 
--- Cleanup function
-local function cleanup()
-	for _, conn in pairs(connections) do
-		pcall(conn.Disconnect, conn)
-	end
-	for _, obj in pairs(drawings) do
-		pcall(obj.Remove, obj)
-	end
-	drawings = {}
-	connections = {}
+-- Cleanup everything
+local function Cleanup()
+    for _, conn in pairs(connections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    for _, line in pairs(tracers) do
+        pcall(function() line:Remove() end)
+    end
+    tracers = {}
+    connections = {}
 end
 
--- Create drawing objects for a player
-local function createESP(player)
-	if player == LocalPlayer then return end
-
-	local esp = {
-		Name     = Drawing.new("Text"),
-		Tracer   = Drawing.new("Line"),
-		Box      = Drawing.new("Square"),
-		HeadDot  = Drawing.new("Circle"),
-	}
-
-	esp.Name.Visible      = false
-	esp.Name.Center       = true
-	esp.Name.Outline      = getgenv().ESP.TextOutline
-	esp.Name.OutlineColor = getgenv().ESP.TextOutlineColor
-	esp.Name.Color        = getgenv().ESP.TextColor
-	esp.Name.Size         = getgenv().ESP.TextSize
-	esp.Name.Font         = Drawing.Fonts.UI
-
-	esp.Tracer.Visible    = false
-	esp.Tracer.Color      = getgenv().ESP.TracerColor
-	esp.Tracer.Thickness  = getgenv().ESP.TracerThick
-	esp.Tracer.Transparency = getgenv().ESP.TracerTrans
-
-	esp.Box.Visible       = false
-	esp.Box.Color         = getgenv().ESP.BoxColor
-	esp.Box.Thickness     = getgenv().ESP.BoxThick
-	esp.Box.Filled        = getgenv().ESP.BoxFilled
-
-	esp.HeadDot.Visible   = false
-	esp.HeadDot.Color     = getgenv().ESP.HeadDotColor
-	esp.HeadDot.Radius    = getgenv().ESP.HeadDotSize
-	esp.HeadDot.NumSides  = 32
-	esp.HeadDot.Filled    = true
-
-	table.insert(drawings, esp.Name)
-	table.insert(drawings, esp.Tracer)
-	table.insert(drawings, esp.Box)
-	table.insert(drawings, esp.HeadDot)
-
-	local conn
-	conn = RunService.RenderStepped:Connect(function()
-		if not getgenv().ESP.Enabled or not player.Character then
-			esp.Name.Visible = false
-			esp.Tracer.Visible = false
-			esp.Box.Visible = false
-			esp.HeadDot.Visible = false
-			return
-		end
-
-		local char = player.Character
-		local root = char:FindFirstChild("HumanoidRootPart")
-		local head = char:FindFirstChild("Head")
-		local hum   = char:FindFirstChildOfClass("Humanoid")
-
-		if not root or not head or not hum then
-			esp.Name.Visible = false
-			esp.Tracer.Visible = false
-			esp.Box.Visible = false
-			esp.HeadDot.Visible = false
-			return
-		end
-
-		if getgenv().ESP.AliveCheck and hum.Health <= 0 then
-			esp.Name.Visible = false
-			esp.Tracer.Visible = false
-			esp.Box.Visible = false
-			esp.HeadDot.Visible = false
-			return
-		end
-
-		if getgenv().ESP.TeamCheck and player.TeamColor == LocalPlayer.TeamColor then
-			esp.Name.Visible = false
-			esp.Tracer.Visible = false
-			esp.Box.Visible = false
-			esp.HeadDot.Visible = false
-			return
-		end
-
-		local rootPos, onScreen = Camera:WorldToViewportPoint(root.Position)
-		if not onScreen then
-			esp.Name.Visible = false
-			esp.Tracer.Visible = false
-			esp.Box.Visible = false
-			esp.HeadDot.Visible = false
-			return
-		end
-
-		-- Name + Health + Distance
-		local text = ""
-		if getgenv().ESP.ShowName then
-			text = player.DisplayName .. " (" .. player.Name .. ")"
-		end
-		if getgenv().ESP.ShowHealth then
-			text = text .. " [" .. math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth) .. "]"
-		end
-		if getgenv().ESP.ShowDistance then
-			local dist = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) and 
-				(root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude or 0
-			text = text .. " [" .. math.floor(dist) .. " studs]"
-		end
-
-		esp.Name.Text = text
-		esp.Name.Position = Vector2.new(rootPos.X, rootPos.Y - 40)
-		esp.Name.Visible = true
-
-		-- Head dot
-		if getgenv().ESP.HeadDot then
-			local headPos = Camera:WorldToViewportPoint(head.Position)
-			esp.HeadDot.Position = Vector2.new(headPos.X, headPos.Y)
-			esp.HeadDot.Visible = headPos.Z > 0
-		end
-
-		-- Tracer
-		if getgenv().ESP.Tracers then
-			local from
-			if getgenv().ESP.TracerType == "Bottom" then
-				from = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-			elseif getgenv().ESP.TracerType == "Center" then
-				from = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-			else -- Mouse
-				from = UserInputService:GetMouseLocation()
-			end
-
-			esp.Tracer.From = from
-			esp.Tracer.To = Vector2.new(rootPos.X, rootPos.Y)
-			esp.Tracer.Visible = true
-		else
-			esp.Tracer.Visible = false
-		end
-
-		-- 2D Box
-		if getgenv().ESP.Box2D then
-			local top = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 3, 0))
-			local bottom = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
-
-			local width = math.abs(top.X - bottom.X) * 2.5
-			local height = math.abs(top.Y - bottom.Y) * 1.2
-
-			esp.Box.Size = Vector2.new(width, height)
-			esp.Box.Position = Vector2.new(rootPos.X - width/2, rootPos.Y - height/2)
-			esp.Box.Visible = true
-		else
-			esp.Box.Visible = false
-		end
-	end)
-
-	table.insert(connections, conn)
+-- Create / update single tracer
+local function CreateTracer(player)
+    if player == lp then return end
+    
+    local line = Drawing.new("Line")
+    line.Visible       = false
+    line.Color         = TracersOnly.Color
+    line.Thickness     = TracersOnly.Thickness
+    line.Transparency  = TracersOnly.Transparency
+    
+    tracers[player] = line
+    
+    local conn = RunService.RenderStepped:Connect(function()
+        if not TracersOnly.Enabled or not player.Character then
+            line.Visible = false
+            return
+        end
+        
+        local char = player.Character
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local hum  = char:FindFirstChildOfClass("Humanoid")
+        
+        if not root or not hum then
+            line.Visible = false
+            return
+        end
+        
+        if TracersOnly.AliveCheck and hum.Health <= 0 then
+            line.Visible = false
+            return
+        end
+        
+        if TracersOnly.TeamCheck and player.TeamColor == lp.TeamColor then
+            line.Visible = false
+            return
+        end
+        
+        local rootPos, onScreen = cam:WorldToViewportPoint(root.Position)
+        if not onScreen then
+            line.Visible = false
+            return
+        end
+        
+        local dist = (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) and 
+                     (root.Position - lp.Character.HumanoidRootPart.Position).Magnitude or 9999
+        
+        if dist > TracersOnly.MaxDistance then
+            line.Visible = false
+            return
+        end
+        
+        -- From point
+        local from
+        if TracersOnly.TracerType == "Bottom" then
+            from = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
+        elseif TracersOnly.TracerType == "Center" then
+            from = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+        else -- Mouse
+            from = UIS:GetMouseLocation()
+        end
+        
+        line.From     = from
+        line.To       = Vector2.new(rootPos.X, rootPos.Y)
+        line.Visible  = true
+    end)
+    
+    table.insert(connections, conn)
 end
 
 -- Watch players
-local function onPlayerAdded(player)
-	if player ~= LocalPlayer then
-		player.CharacterAdded:Connect(function()
-			if getgenv().ESP.Enabled then
-				task.spawn(function()
-					task.wait(0.3)
-					createESP(player)
-				end)
-			end
-		end)
-
-		if player.Character then
-			task.spawn(function()
-				task.wait(0.3)
-				createESP(player)
-			end)
-		end
-	end
+local function OnPlayerAdded(p)
+    if p == lp then return end
+    
+    p.CharacterAdded:Connect(function()
+        if TracersOnly.Enabled then
+            task.delay(0.4, function()
+                CreateTracer(p)
+            end)
+        end
+    end)
+    
+    if p.Character then
+        task.delay(0.4, function()
+            CreateTracer(p)
+        end)
+    end
 end
 
--- Main loop
-local function mainLoop()
-	cleanup() -- clear old stuff
-
-	if not getgenv().ESP.Enabled then return end
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer then
-			task.spawn(function()
-				task.wait(0.1)
-				createESP(player)
-			end)
-		end
-	end
-
-	-- Watch new players
-	table.insert(connections, Players.PlayerAdded:Connect(onPlayerAdded))
-
-	-- Periodic refresh (in case characters respawn weirdly)
-	table.insert(connections, RunService.Heartbeat:Connect(function()
-		if not getgenv().ESP.Enabled then return end
-		-- Optional: you can add extra logic here if needed
-	end))
+-- Main toggle logic
+getgenv().ToggleTracers = function(state)
+    TracersOnly.Enabled = state
+    
+    if state then
+        Cleanup() -- clear old
+        
+        -- Create for existing players
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp then
+                task.spawn(function()
+                    task.wait(0.1)
+                    CreateTracer(p)
+                end)
+            end
+        end
+        
+        -- Watch new players
+        table.insert(connections, Players.PlayerAdded:Connect(OnPlayerAdded))
+        
+        print("[Tracers] Enabled")
+    else
+        Cleanup()
+        print("[Tracers] Disabled")
+    end
 end
 
--- Toggle function (call this to enable/disable)
-getgenv().ToggleESP = function(state)
-	getgenv().ESP.Enabled = state
-	if state then
-		mainLoop()
-		print("[ESP] Enabled")
-	else
-		cleanup()
-		print("[ESP] Disabled")
-	end
-end
-
--- Initial setup
-Players.PlayerRemoving:Connect(function(player)
-	-- cleanup drawings for leaving player (optional)
+-- Optional: keybind (press T to toggle)
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.T then
+        getgenv().ToggleTracers(not TracersOnly.Enabled)
+    end
 end)
 
-print("[ESP] Loaded | Use getgenv().ToggleESP(true/false) to toggle")
+-- Initial message
+print("[Tracers Only] Loaded")
+print("→ Use:  getgenv().ToggleTracers(true/false)")
+print("→ Or press T to toggle")
+print("→ Settings: getgenv().TracersOnly = {...}")
 
--- Optional: auto enable on load (comment out if unwanted)
--- getgenv().ToggleESP(true)
+-- Uncomment to auto-enable on script run
+-- getgenv().ToggleTracers(true)
