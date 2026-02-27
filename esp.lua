@@ -1,170 +1,135 @@
--- Tracers Only - Minimal & Clean (2025-2026)
--- No ESP text / boxes / head dots / chams — just lines to players
-
-getgenv().TracersOnly = {
-    Enabled       = false,
-    TeamCheck     = true,           -- true = hide teammates
-    AliveCheck    = true,           -- true = hide dead players
-    
-    TracerType    = "Bottom",       -- "Bottom", "Center", "Mouse"
-    Color         = Color3.fromRGB(255, 80, 80),
-    Thickness     = 1.5,
-    Transparency  = 0.65,
-    
-    -- Advanced (optional)
-    MaxDistance   = 2000,           -- hide very far players (studs)
+getgenv().Tracers = {
+    Enabled = true,          -- set to false to disable
+    TeamCheck = false,       -- true = hide teammates
+    Color = Color3.fromRGB(255, 50, 50),   -- red
+    Thickness = 1.5,
+    Transparency = 1,
+    Origin = "Bottom"        -- "Bottom", "Center", "Mouse"
 }
 
 -- Services
-local Players    = game:GetService("Players")
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UIS        = game:GetService("UserInputService")
-local lp         = Players.LocalPlayer
-local cam        = workspace.CurrentCamera
+local UIS = game:GetService("UserInputService")
 
-local tracers    = {}      -- player → Drawing Line
-local connections = {}     -- cleanup table
+local lplr = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
--- Cleanup everything
-local function Cleanup()
+local tracers = {}         -- player → Drawing Line
+local connections = {}     -- cleanup
+
+-- Cleanup function
+local function cleanup()
     for _, conn in pairs(connections) do
-        pcall(function() conn:Disconnect() end)
+        pcall(conn.Disconnect, conn)
     end
     for _, line in pairs(tracers) do
-        pcall(function() line:Remove() end)
+        pcall(line.Remove, line)
     end
     tracers = {}
     connections = {}
 end
 
--- Create / update single tracer
-local function CreateTracer(player)
-    if player == lp then return end
+-- Add tracer for one player
+local function addTracer(player)
+    if player == lplr then return end
     
     local line = Drawing.new("Line")
-    line.Visible       = false
-    line.Color         = TracersOnly.Color
-    line.Thickness     = TracersOnly.Thickness
-    line.Transparency  = TracersOnly.Transparency
+    line.Visible = false
+    line.Color = getgenv().Tracers.Color
+    line.Thickness = getgenv().Tracers.Thickness
+    line.Transparency = getgenv().Tracers.Transparency
     
     tracers[player] = line
     
     local conn = RunService.RenderStepped:Connect(function()
-        if not TracersOnly.Enabled or not player.Character then
+        if not getgenv().Tracers.Enabled then
             line.Visible = false
             return
         end
         
-        local char = player.Character
-        local root = char:FindFirstChild("HumanoidRootPart")
-        local hum  = char:FindFirstChildOfClass("Humanoid")
-        
-        if not root or not hum then
+        if not player.Character then
             line.Visible = false
             return
         end
         
-        if TracersOnly.AliveCheck and hum.Health <= 0 then
+        local root = player.Character:FindFirstChild("HumanoidRootPart")
+        local hum = player.Character:FindFirstChildOfClass("Humanoid")
+        
+        if not root or not hum or hum.Health <= 0 then
             line.Visible = false
             return
         end
         
-        if TracersOnly.TeamCheck and player.TeamColor == lp.TeamColor then
+        if getgenv().Tracers.TeamCheck and player.TeamColor == lplr.TeamColor then
             line.Visible = false
             return
         end
         
-        local rootPos, onScreen = cam:WorldToViewportPoint(root.Position)
-        if not onScreen then
+        local vector, onScreen = camera:WorldToViewportPoint(root.Position)
+        
+        if onScreen then
+            local from
+            if getgenv().Tracers.Origin == "Bottom" then
+                from = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+            elseif getgenv().Tracers.Origin == "Center" then
+                from = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+            else -- Mouse
+                from = UIS:GetMouseLocation()
+            end
+            
+            line.From = from
+            line.To = Vector2.new(vector.X, vector.Y)
+            line.Visible = true
+        else
             line.Visible = false
-            return
         end
-        
-        local dist = (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) and 
-                     (root.Position - lp.Character.HumanoidRootPart.Position).Magnitude or 9999
-        
-        if dist > TracersOnly.MaxDistance then
-            line.Visible = false
-            return
-        end
-        
-        -- From point
-        local from
-        if TracersOnly.TracerType == "Bottom" then
-            from = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
-        elseif TracersOnly.TracerType == "Center" then
-            from = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
-        else -- Mouse
-            from = UIS:GetMouseLocation()
-        end
-        
-        line.From     = from
-        line.To       = Vector2.new(rootPos.X, rootPos.Y)
-        line.Visible  = true
     end)
     
     table.insert(connections, conn)
 end
 
--- Watch players
-local function OnPlayerAdded(p)
-    if p == lp then return end
+-- Watch all players
+local function setup()
+    cleanup() -- clear old
     
-    p.CharacterAdded:Connect(function()
-        if TracersOnly.Enabled then
-            task.delay(0.4, function()
-                CreateTracer(p)
+    if not getgenv().Tracers.Enabled then return end
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= lplr then
+            task.spawn(function()
+                if player.Character then
+                    addTracer(player)
+                end
+                player.CharacterAdded:Connect(function()
+                    addTracer(player)
+                end)
             end)
         end
-    end)
-    
-    if p.Character then
-        task.delay(0.4, function()
-            CreateTracer(p)
-        end)
     end
-end
-
--- Main toggle logic
-getgenv().ToggleTracers = function(state)
-    TracersOnly.Enabled = state
     
-    if state then
-        Cleanup() -- clear old
-        
-        -- Create for existing players
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= lp then
-                task.spawn(function()
-                    task.wait(0.1)
-                    CreateTracer(p)
-                end)
-            end
+    -- New players
+    table.insert(connections, Players.PlayerAdded:Connect(function(player)
+        if player ~= lplr then
+            player.CharacterAdded:Connect(function()
+                addTracer(player)
+            end)
         end
-        
-        -- Watch new players
-        table.insert(connections, Players.PlayerAdded:Connect(OnPlayerAdded))
-        
-        print("[Tracers] Enabled")
-    else
-        Cleanup()
-        print("[Tracers] Disabled")
-    end
+    end))
 end
 
--- Optional: keybind (press T to toggle)
-UIS.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.T then
-        getgenv().ToggleTracers(not TracersOnly.Enabled)
+-- Auto-run when script loads
+setup()
+
+-- Watch for setting changes (so you can toggle via executor)
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        setup() -- re-run setup if Enabled changes
     end
 end)
 
--- Initial message
-print("[Tracers Only] Loaded")
-print("→ Use:  getgenv().ToggleTracers(true/false)")
-print("→ Or press T to toggle")
-print("→ Settings: getgenv().TracersOnly = {...}")
-
--- Uncomment to auto-enable on script run
--- getgenv().ToggleTracers(true)
+print("[Tracers] Loaded")
+print("→ Toggle:   getgenv().Tracers.Enabled = true/false")
+print("→ TeamCheck: getgenv().Tracers.TeamCheck = true/false")
+print("→ Origin:    getgenv().Tracers.Origin = 'Bottom' / 'Center' / 'Mouse'")
