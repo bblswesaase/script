@@ -719,6 +719,6 @@ if Environment.Settings.ReloadOnTeleport then
 	if queue_on_teleport then
 		queue_on_teleport(game:HttpGet("https://raw.githubusercontent.com/Exunys/Wall-Hack/main/Resources/Scripts/Main.lua"))
 	else
-		SendNotification(Title, "Your exploit does not support \"syn.queue_on_teleport()\"")
+		print("w")
 	end
 end
