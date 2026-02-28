@@ -1,134 +1,102 @@
-getgenv().chams = {
+getgenv().Flex = {
     Enabled = false,
     TeamCheck = false,
-    AliveCheck = true,
-    Color = Color3.fromRGB(255, 0, 4), -- red (your color)
-    Thickness = 1.8,
-    Transparency = 0.9,
-    Filled = false,
-    SizeMultiplier = 2.2
+    Color = Color3.fromRGB(255, 50, 50),
+    Thickness = 1.5,
+    Transparency = 1,
+    Origin = "Bottom"
 }
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
 local lplr = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-local boxes = {}
+local tracers = {}
 local connections = {}
 
 local function cleanup()
-    for _, conn in pairs(connections) do 
-        pcall(function() conn:Disconnect() end) 
-    end
-    for _, box in pairs(boxes) do 
-        pcall(function() box:Remove() end) 
-    end
-    boxes = {}
+    for _, conn in pairs(connections) do pcall(conn.Disconnect, conn) end
+    for _, line in pairs(tracers) do pcall(line.Remove, line) end
+    tracers = {}
     connections = {}
 end
 
-local function addBox(player)
+local function addTracer(player)
     if player == lplr then return end
-    
-    local box = Drawing.new("Square")
-    box.Visible = false
-    box.Color = getgenv().chams.Color
-    box.Thickness = getgenv().chams.Thickness
-    box.Transparency = getgenv().chams.Transparency
-    box.Filled = getgenv().chams.Filled
-    
-    boxes[player] = box
-    
+    local line = Drawing.new("Line")
+    line.Visible = false
+    line.Color = getgenv().Flex.Color
+    line.Thickness = getgenv().Flex.Thickness
+    line.Transparency = getgenv().Flex.Transparency
+    tracers[player] = line
     local conn = RunService.RenderStepped:Connect(function()
-        if not getgenv().chams.Enabled then
-            box.Visible = false
+        if not getgenv().Flex.Enabled then
+            line.Visible = false
             return
         end
-        
-        local char = player.Character
-        if not char then
-            box.Visible = false
+        if not player.Character then
+            line.Visible = false
             return
         end
-        
-        local root = char:FindFirstChild("HumanoidRootPart")
-        local head = char:FindFirstChild("Head")
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        
-        if not root or not head or not hum then
-            box.Visible = false
+        local root = player.Character:FindFirstChild("HumanoidRootPart")
+        local hum = player.Character:FindFirstChildOfClass("Humanoid")
+        if not root or not hum or hum.Health <= 0 then
+            line.Visible = false
             return
         end
-        
-        if getgenv().chams.AliveCheck and hum.Health <= 0 then
-            box.Visible = false
+        if getgenv().Flex.TeamCheck and player.TeamColor == lplr.TeamColor then
+            line.Visible = false
             return
         end
-        
-        if getgenv().chams.TeamCheck and player.TeamColor == lplr.TeamColor then
-            box.Visible = false
-            return
+        local vector, onScreen = camera:WorldToViewportPoint(root.Position)
+        if onScreen then
+            local from
+            if getgenv().Flex.Origin == "Bottom" then
+                from = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+            elseif getgenv().Flex.Origin == "Center" then
+                from = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+            else
+                from = UIS:GetMouseLocation()
+            end
+            line.From = from
+            line.To = Vector2.new(vector.X, vector.Y)
+            line.Visible = true
+        else
+            line.Visible = false
         end
-        
-        local rootPos, onScreen = camera:WorldToViewportPoint(root.Position)
-        if not onScreen then
-            box.Visible = false
-            return
-        end
-        
-        -- IMPROVED BOX CALCULATION
-        local headPos = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.2, 0))
-        local legPos = camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
-        
-        local height = math.abs(headPos.Y - legPos.Y)
-        
-        local widthFromProjection = math.abs(headPos.X - legPos.X) * 2.5
-        local minWidth = height * 0.55
-        local width = math.max(widthFromProjection, minWidth)
-        
-        width = width * getgenv().chams.SizeMultiplier
-        height = height * 1.3
-        
-        box.Size = Vector2.new(width, height)
-        box.Position = Vector2.new(rootPos.X - width/2, rootPos.Y - height/2)
-        box.Visible = true
     end)
-    
     table.insert(connections, conn)
 end
 
-local function setup()
+local function setupTracers()
     cleanup()
-    if not getgenv().chams.Enabled then return end
-    
+    if not getgenv().Flex.Enabled then return end
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= lplr then
             task.spawn(function()
-                if player.Character then addBox(player) end
-                player.CharacterAdded:Connect(function() addBox(player) end)
+                if player.Character then addTracer(player) end
+                player.CharacterAdded:Connect(function() addTracer(player) end)
             end)
         end
     end
-    
     table.insert(connections, Players.PlayerAdded:Connect(function(player)
         if player ~= lplr then
-            player.CharacterAdded:Connect(function() addBox(player) end)
+            player.CharacterAdded:Connect(function() addTracer(player) end)
         end
     end))
 end
 
--- Initial run
-setup()
+setupTracers()
 
--- Watch toggle changes
 task.spawn(function()
-    local last = getgenv().chams.Enabled
+    local last = getgenv().Flex.Enabled
     while true do
         task.wait(0.3)
-        if getgenv().chams.Enabled ~= last then
-            last = getgenv().chams.Enabled
-            setup()
+        if getgenv().Flex.Enabled ~= last then
+            last = getgenv().Flex.Enabled
+            setupTracers()
         end
     end
 end)
