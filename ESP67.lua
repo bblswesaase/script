@@ -708,8 +708,8 @@ function Environment.Functions:GetDocumentation()
 end
 
 --// Main
-load();
 
+Load();
 
 --// Reload On Teleport
 
