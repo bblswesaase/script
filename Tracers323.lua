@@ -1,8 +1,7 @@
-
 getgenv().Flex = {
-	Enabled = false,                -- change here or live
+	Enabled = true,                -- change here or live
 	TeamCheck = false,             -- true = hide teammates
-	Color = Color3.fromRGB(255, 50, 50),  -- red
+	Color = Color3.fromRGB(255, 50, 50), -- red
 	Thickness = 1.5,
 	Transparency = 1,
 	Origin = "Bottom"              -- "Bottom", "Center", "Mouse"
@@ -44,7 +43,6 @@ local function addTracer(player)
 	tracers[player] = line
 
 	local conn = RunService.RenderStepped:Connect(function()
-		-- Check if still enabled (global can change live)
 		if not getgenv().Flex.Enabled then
 			line.Visible = false
 			return
@@ -91,13 +89,13 @@ local function addTracer(player)
 	table.insert(connections, conn)
 end
 
--- Setup all players (called only when needed)
+-- Setup all players (called when enabled/origin changes)
 local function setupTracers()
 	cleanup()  -- clear old first
 
 	if not getgenv().Flex.Enabled then return end
 
-	print("[Tracers] Enabling...")
+	print("[Flex] Enabling...")
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= lplr then
@@ -125,17 +123,24 @@ end
 -- Initial run
 setupTracers()
 
--- Watch for global toggle changes (safe way, no infinite loop spam)
+-- Watch for changes to Enabled or Origin (safe polling)
 task.spawn(function()
-	local lastState = getgenv().Flex.Enabled
+	local lastEnabled = getgenv().Flex.Enabled
+	local lastOrigin = getgenv().Flex.Origin
+
 	while true do
 		task.wait(0.3)
-		if getgenv().Flex.Enabled ~= lastState then
-			lastState = getgenv().Flex.Enabled
+		local currentEnabled = getgenv().Flex.Enabled
+		local currentOrigin = getgenv().Flex.Origin
+
+		if currentEnabled ~= lastEnabled or currentOrigin ~= lastOrigin then
+			lastEnabled = currentEnabled
+			lastOrigin = currentOrigin
 			setupTracers()
 		end
 	end
 end)
 
-print("[Tracers] Loaded - toggle with getgenv().Tracers.Enabled = true/false")
+print("[Flex] Loaded")
+print("→ Toggle:   getgenv().Flex.Enabled = true/false")
 print("→ Current state: " .. tostring(getgenv().Flex.Enabled))
