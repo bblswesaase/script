@@ -709,7 +709,7 @@ end
 
 --// Main
 
-Load();
+
 
 --// Reload On Teleport
 
