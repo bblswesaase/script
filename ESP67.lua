@@ -708,7 +708,7 @@ function Environment.Functions:GetDocumentation()
 end
 
 --// Main
-
+load();
 
 
 --// Reload On Teleport
