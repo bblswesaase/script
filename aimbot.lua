@@ -1,443 +1,291 @@
 --[[ 
-    Wall Hack / ESP Module [AirHub] - PC + Controller Compatible
-    Original by Exunys (CC0) - Enhanced for Gamepad fallback (2026)
+    Universal Aimbot Module - PC + Controller Compatible
+    Original by Exunys (CC0) - Soft Aim Assist Edition for Gamepad (2026)
     https://github.com/Exunys
 ]]
 
 -- Cache
-local select, next, pcall, getgenv, mathfloor, mathabs, mathcos, mathsin, mathrad = 
-    select, next, pcall, getgenv, math.floor, math.abs, math.cos, math.sin, math.rad
-
-local Vector2new, Vector3new, Vector3zero, CFramenew, Drawingnew, Color3fromRGB = 
-    Vector2.new, Vector3.new, Vector3.zero, CFrame.new, Drawing.new, Color3.fromRGB
+local game, workspace = game, workspace
+local pcall, getgenv, next, tick = pcall, getgenv, next, tick
+local Vector2new, Vector3zero, CFramenew, Color3fromRGB, Color3fromHSV = Vector2.new, Vector3.zero, CFrame.new, Color3.fromRGB, Color3.fromHSV
+local Drawingnew, TweenInfonew = Drawing.new, TweenInfo.new
+local mathclamp, mathacos, mathdeg = math.clamp, math.acos, math.deg
 
 -- Services
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
 local Players          = game:GetService("Players")
-local LocalPlayer      = Players.LocalPlayer
-local Camera           = workspace.CurrentCamera
 
--- Early exit if already loaded
-if not getgenv().AirHub or getgenv().AirHub.WallHack then return end
+local LocalPlayer = Players.LocalPlayer
+local Camera      = workspace.CurrentCamera
 
-getgenv().AirHub.WallHack = {
+-- Environment
+if getgenv().ExunysDeveloperAimbot and getgenv().ExunysDeveloperAimbot.Exit then
+    getgenv().ExunysDeveloperAimbot:Exit()
+end
+
+getgenv().ExunysDeveloperAimbot = {
+    DeveloperSettings = {
+        UpdateMode      = "RenderStepped",
+        TeamCheckOption = "TeamColor",
+        RainbowSpeed    = 1.8,
+    },
+
     Settings = {
-        Enabled    = false,
-        TeamCheck  = false,
-        AliveCheck = true,
+        Enabled              = false,
+        TeamCheck            = false,
+        AliveCheck           = true,
+        WallCheck            = false,
+        OffsetToMoveDirection = false,
+        OffsetIncrement      = 12,
+
+        -- Controller / Gamepad settings
+        AimAssistStrength    = 0.16,    -- 0.05 = very subtle, 0.35 = aggressive
+        AimAssistDeadzone    = 14,      -- degrees - only assist if target is outside this cone
+        SmoothingFactor      = 0.38,    -- higher = faster camera response (0.2–0.6 best)
+        LockPart             = "Head",
+        TriggerKey           = Enum.UserInputType.MouseButton2,  -- can be changed to gamepad button
+        Toggle               = false,
     },
 
-    Visuals = {
-        ChamsSettings = {
-            Enabled      = false,
-            Color        = Color3fromRGB(255, 180, 100),
-            Transparency = 0.25,
-            Thickness    = 1,
-            Filled       = true,
-            EntireBody   = false,
-        },
-        ESPSettings = {
-            Enabled          = true,
-            TextColor        = Color3fromRGB(255, 255, 255),
-            TextSize         = 13,
-            Outline          = true,
-            OutlineColor     = Color3fromRGB(0, 0, 0),
-            TextTransparency = 0.65,
-            TextFont         = Drawing.Fonts.UI,
-            Offset           = 18,
-            DisplayDistance  = true,
-            DisplayHealth    = true,
-            DisplayName      = true,
-        },
-        TracersSettings = {
-            Enabled      = true,
-            Type         = 1, -- 1=Bottom, 2=Center, 3=Mouse (fallback to center on controller)
-            Transparency = 0.65,
-            Thickness    = 1.4,
-            Color        = Color3fromRGB(220, 220, 255),
-        },
-        BoxSettings = {
-            Enabled      = true,
-            Type         = 1, -- 1=3D corners, 2=2D box
-            Color        = Color3fromRGB(255, 255, 255),
-            Transparency = 0.7,
-            Thickness    = 1.2,
-            Filled       = false,
-            Increase     = 1.05,
-        },
-        HeadDotSettings = {
-            Enabled      = true,
-            Color        = Color3fromRGB(255, 80, 100),
-            Transparency = 0.6,
-            Thickness    = 1,
-            Filled       = true,
-            Sides        = 24,
-        },
-        HealthBarSettings = {
-            Enabled      = true,
-            Transparency = 0.75,
-            Size         = 3,
-            Offset       = 6,
-            OutlineColor = Color3fromRGB(20, 20, 20),
-            Blue         = 60,
-            Type         = 3, -- 1=Top, 2=Bottom, 3=Left, 4=Right
-        },
+    FOVSettings = {
+        Enabled          = true,
+        Visible          = true,
+        Radius           = 140,
+        NumSides         = 60,
+        Thickness        = 1.4,
+        Transparency     = 0.95,
+        Filled           = false,
+        RainbowColor     = false,
+        RainbowOutlineColor = false,
+        Color            = Color3fromRGB(220, 220, 255),
+        OutlineColor     = Color3fromRGB(20, 20, 40),
+        LockedColor      = Color3fromRGB(255, 120, 140),
     },
 
-    Crosshair = {
-        Settings = {
-            Enabled              = false,
-            Type                 = 2, -- 1=Mouse (fallback center on controller), 2=Screen Center
-            Size                 = 14,
-            Thickness            = 1.2,
-            Color                = Color3fromRGB(0, 255, 120),
-            Transparency         = 0.9,
-            GapSize              = 6,
-            Rotation             = 0,
-            CenterDot            = true,
-            CenterDotColor       = Color3fromRGB(255, 255, 255),
-            CenterDotSize        = 2,
-            CenterDotTransparency = 1,
-            CenterDotFilled      = true,
-        },
-        Parts = {
-            LeftLine   = Drawingnew("Line"),
-            RightLine  = Drawingnew("Line"),
-            TopLine    = Drawingnew("Line"),
-            BottomLine = Drawingnew("Line"),
-            CenterDot  = Drawingnew("Circle"),
-        }
-    },
-
-    WrappedPlayers = {},
+    Blacklisted      = {},
+    Locked           = nil,
+    FOVCircle        = Drawingnew("Circle"),
+    FOVCircleOutline = Drawingnew("Circle"),
+    Connections      = {},
 }
 
-local Environment = getgenv().AirHub.WallHack
+local Environment = getgenv().ExunysDeveloperAimbot
 
--- Helper: Controller detection
-local function IsControllerMode()
+Environment.FOVCircle.Visible       = false
+Environment.FOVCircleOutline.Visible = false
+
+-- Helpers
+local function IsController()
     return UserInputService.GamepadEnabled
 end
 
--- Helper: Safe cursor position (fallback for controller)
-local function GetCursorPosition()
-    if not IsControllerMode() then
-        local success, pos = pcall(UserInputService.GetMouseLocation, UserInputService)
-        if success then return pos end
+local function GetCursorPos()
+    if not IsController() then
+        return UserInputService:GetMouseLocation()
     end
-    -- Fallback to screen center on controller / error
+    -- Fallback for controller: screen center
     return Vector2new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 end
 
-local WorldToViewportPoint = function(...) 
-    return Camera:WorldToViewportPoint(...) 
+local function GetRainbowColor()
+    local t = tick() % Environment.DeveloperSettings.RainbowSpeed / Environment.DeveloperSettings.RainbowSpeed
+    return Color3fromHSV(t, 1, 1)
 end
 
--- Get player data table
-local function GetPlayerTable(player)
-    for _, data in next, Environment.WrappedPlayers do
-        if data.Name == player.Name then return data end
-    end
+local function ConvertVector(v)
+    return Vector2new(v.X, v.Y)
 end
 
--- Assign rig type (R6/R15)
-local function AssignRigType(player)
-    local data = GetPlayerTable(player)
-    if not player.Character then return end
-
-    if player.Character:FindFirstChild("Torso") then
-        data.RigType = "R6"
-    elseif player.Character:FindFirstChild("LowerTorso") then
-        data.RigType = "R15"
-    end
+local function CancelLock()
+    Environment.Locked = nil
+    Environment.FOVCircle.Color = Environment.FOVSettings.Color
 end
 
--- Alive / team checks
-local function InitChecks(player)
-    local data = GetPlayerTable(player)
-    data.Connections = data.Connections or {}
-
-    data.Connections.UpdateChecks = RunService.RenderStepped:Connect(function()
-        if not player.Character or not player.Character:FindFirstChildOfClass("Humanoid") then
-            data.Checks = {Alive = false, Team = false}
-            return
-        end
-
-        local hum = player.Character:FindFirstChildOfClass("Humanoid")
-        data.Checks.Alive = Environment.Settings.AliveCheck and hum.Health > 0 or true
-        data.Checks.Team  = Environment.Settings.TeamCheck and player.TeamColor ~= LocalPlayer.TeamColor or true
-    end)
-end
-
--- Chams update (quad drawing - simplified a bit)
-local function UpdateCham(part, cham)
-    if not part or not Environment.Visuals.ChamsSettings.Enabled then
-        for i = 1, 6 do cham["Quad"..i].Visible = false end
-        return
-    end
-
-    local cf, size = part.CFrame, part.Size / 2
-    local visible = select(2, WorldToViewportPoint(cf.Position))
-
-    if not visible then
-        for i = 1, 6 do cham["Quad"..i].Visible = false end
-        return
-    end
-
-    local settings = Environment.Visuals.ChamsSettings
-    local color, trans, thick, filled = settings.Color, settings.Transparency, settings.Thickness, settings.Filled
-
-    -- Define 8 corner points (for all 6 faces)
-    local corners = {
-        cf * CFramenew( size.X,  size.Y,  size.Z),
-        cf * CFramenew(-size.X,  size.Y,  size.Z),
-        cf * CFramenew( size.X, -size.Y,  size.Z),
-        cf * CFramenew(-size.X, -size.Y,  size.Z),
-        cf * CFramenew( size.X,  size.Y, -size.Z),
-        cf * CFramenew(-size.X,  size.Y, -size.Z),
-        cf * CFramenew( size.X, -size.Y, -size.Z),
-        cf * CFramenew(-size.X, -size.Y, -size.Z),
-    }
-
-    local screen = {}
-    for i, c in ipairs(corners) do
-        local pos, onScreen = WorldToViewportPoint(c.Position)
-        screen[i] = onScreen and Vector2new(pos.X, pos.Y) or nil
-    end
-
-    -- Simple front/back/top/bottom/right/left approximation (you can expand)
-    local function setQuad(q, a,b,c,d)
-        if screen[a] and screen[b] and screen[c] and screen[d] then
-            q.PointA = screen[a]
-            q.PointB = screen[b]
-            q.PointC = screen[c]
-            q.PointD = screen[d]
-            q.Color       = color
-            q.Transparency = trans
-            q.Thickness   = thick
-            q.Filled      = filled
-            q.Visible     = true
+local function GetClosestPlayer()
+    if Environment.Locked then
+        local char = Environment.Locked.Character
+        if char then
+            local part = char:FindFirstChild(Environment.Settings.LockPart)
+            if part then
+                local screenPos = Camera:WorldToViewportPoint(part.Position)
+                local dist = (GetCursorPos() - ConvertVector(screenPos)).Magnitude
+                if dist > Environment.FOVSettings.Radius * 1.4 then
+                    CancelLock()
+                end
+            else
+                CancelLock()
+            end
         else
-            q.Visible = false
+            CancelLock()
         end
+        return
     end
 
-    setQuad(cham.Quad1, 1,2,4,3) -- front
-    setQuad(cham.Quad2, 5,6,8,7) -- back
-    setQuad(cham.Quad3, 1,2,6,5) -- top
-    setQuad(cham.Quad4, 3,4,8,7) -- bottom
-    setQuad(cham.Quad5, 1,3,7,5) -- right
-    setQuad(cham.Quad6, 2,4,8,6) -- left
-end
+    local required = Environment.FOVSettings.Enabled and Environment.FOVSettings.Radius or 2500
+    local mousePos = GetCursorPos()
 
--- Visuals table (only showing modified/important parts - addChams, addTracer, addCrosshair updated)
-local Visuals = {
-    AddChams = function(player)
-        local data = GetPlayerTable(player)
-        local char = player.Character or player.CharacterAdded:Wait()
+    for _, player in Players:GetPlayers() do
+        if player == LocalPlayer then continue end
+        if table.find(Environment.Blacklisted, player.Name) then continue end
 
-        -- Rig detection
-        AssignRigType(player)
+        local char = player.Character
+        if not char then continue end
 
-        -- Create quads per body part
-        data.Chams = {}
-        local parts = (data.RigType == "R15" and not Environment.Visuals.ChamsSettings.EntireBody) 
-            and {"Head", "UpperTorso", "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg"}
-            or char:GetChildren()
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or (Environment.Settings.AliveCheck and hum.Health <= 0) then continue end
 
-        for _, part in ipairs(parts) do
-            if part:IsA("BasePart") or part:IsA("MeshPart") then
-                data.Chams[part.Name] = {}
-                for i = 1, 6 do
-                    data.Chams[part.Name]["Quad"..i] = Drawingnew("Quad")
-                end
-            end
+        local part = char:FindFirstChild(Environment.Settings.LockPart)
+        if not part then continue end
+
+        if Environment.Settings.TeamCheck and player[Environment.DeveloperSettings.TeamCheckOption] == LocalPlayer[Environment.DeveloperSettings.TeamCheckOption] then
+            continue
         end
 
-        data.Connections.Chams = RunService.RenderStepped:Connect(function()
-            for name, cham in pairs(data.Chams) do
-                local part = char:FindFirstChild(name)
-                if part then
-                    pcall(UpdateCham, part, cham)
-                end
-            end
-        end)
-    end,
+        if Environment.Settings.WallCheck then
+            local parts = Camera:GetPartsObscuringTarget({part.Position}, {LocalPlayer.Character, char})
+            if #parts > 0 then continue end
+        end
 
-    -- Tracer with controller fallback
-    AddTracer = function(player)
-        local data = GetPlayerTable(player)
-        data.Tracer = Drawingnew("Line")
+        local screen, onScreen = Camera:WorldToViewportPoint(part.Position)
+        if not onScreen then continue end
 
-        data.Connections.Tracer = RunService.RenderStepped:Connect(function()
-            if not player.Character or not Environment.Settings.Enabled then
-                data.Tracer.Visible = false
-                return
-            end
-
-            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-            if not hrp then 
-                data.Tracer.Visible = false
-                return 
-            end
-
-            local pos, onScreen = WorldToViewportPoint(hrp.Position)
-            if not onScreen then
-                data.Tracer.Visible = false
-                return
-            end
-
-            local bottom = WorldToViewportPoint(hrp.CFrame * CFramenew(0, -3, 0).Position)
-            local fromPos
-
-            local tType = Environment.Visuals.TracersSettings.Type
-            if tType == 3 and IsControllerMode() then
-                tType = 2 -- fallback
-            end
-
-            if tType == 1 then
-                fromPos = Vector2new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            elseif tType == 2 then
-                fromPos = Vector2new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-            else
-                fromPos = GetCursorPosition()
-            end
-
-            data.Tracer.Visible = Environment.Visuals.TracersSettings.Enabled and data.Checks.Alive and data.Checks.Team
-            if data.Tracer.Visible then
-                data.Tracer.From = fromPos
-                data.Tracer.To   = Vector2new(bottom.X, bottom.Y)
-                data.Tracer.Color = Environment.Visuals.TracersSettings.Color
-                data.Tracer.Thickness = Environment.Visuals.TracersSettings.Thickness
-                data.Tracer.Transparency = Environment.Visuals.TracersSettings.Transparency
-            end
-        end)
-    end,
-
-    -- Crosshair with controller fallback
-    AddCrosshair = function()
-        local cursorConn = RunService.RenderStepped:Connect(function()
-            if not Environment.Crosshair.Settings.Enabled then return end
-
-            local cType = Environment.Crosshair.Settings.Type
-            if cType == 1 and IsControllerMode() then
-                cType = 2
-            end
-
-            local x, y
-            if cType == 1 then
-                local pos = GetCursorPosition()
-                x, y = pos.X, pos.Y
-            else
-                x = Camera.ViewportSize.X / 2
-                y = Camera.ViewportSize.Y / 2
-            end
-
-            local s = Environment.Crosshair.Settings
-            local p = Environment.Crosshair.Parts
-
-            p.LeftLine.Visible   = s.Enabled
-            p.LeftLine.From      = Vector2new(x - mathcos(mathrad(s.Rotation)) * s.GapSize, y - mathsin(mathrad(s.Rotation)) * s.GapSize)
-            p.LeftLine.To        = Vector2new(x - mathcos(mathrad(s.Rotation)) * (s.Size + s.GapSize), y - mathsin(mathrad(s.Rotation)) * (s.Size + s.GapSize))
-            p.LeftLine.Color     = s.Color
-            p.LeftLine.Thickness = s.Thickness
-            p.LeftLine.Transparency = s.Transparency
-
-            -- Repeat pattern for RightLine, TopLine, BottomLine (copy-paste with sign changes)
-
-            p.CenterDot.Visible      = s.Enabled and s.CenterDot
-            p.CenterDot.Position     = Vector2new(x, y)
-            p.CenterDot.Radius       = s.CenterDotSize
-            p.CenterDot.Color        = s.CenterDotColor
-            p.CenterDot.Transparency = s.CenterDotTransparency
-            p.CenterDot.Filled       = s.CenterDotFilled
-            p.CenterDot.Thickness    = s.CenterDotThickness
-        end)
-    end,
-
-    -- AddESP, AddBox, AddHeadDot, AddHealthBar remain similar — just add pcall around drawing
-    -- (you can copy from original and wrap drawing lines in pcall if needed)
-}
-
--- Wrap / Unwrap / Load functions (mostly unchanged, just safer)
-local function Wrap(player)
-    if player == LocalPlayer or GetPlayerTable(player) then return end
-
-    local data = {
-        Name = player.Name,
-        Checks = {Alive = true, Team = true},
-        Connections = {},
-        ESP = nil, Tracer = nil, HeadDot = nil,
-        HealthBar = {Main = nil, Outline = nil},
-        Box = {Square = nil, Lines = {}},
-        Chams = {}
-    }
-
-    Environment.WrappedPlayers[#Environment.WrappedPlayers + 1] = data
-
-    AssignRigType(player)
-    InitChecks(player)
-    Visuals.AddChams(player)
-    Visuals.AddESP(player)
-    Visuals.AddTracer(player)
-    Visuals.AddBox(player)
-    Visuals.AddHeadDot(player)
-    Visuals.AddHealthBar(player)
-end
-
-local function UnWrap(player)
-    for i, data in ipairs(Environment.WrappedPlayers) do
-        if data.Name == player.Name then
-            for _, conn in pairs(data.Connections) do
-                pcall(conn.Disconnect, conn)
-            end
-            pcall(function()
-                data.ESP:Remove()
-                data.Tracer:Remove()
-                data.HeadDot:Remove()
-                data.HealthBar.Main:Remove()
-                data.HealthBar.Outline:Remove()
-            end)
-            -- Clean boxes and chams...
-            Environment.WrappedPlayers[i] = nil
-            break
+        local dist = (mousePos - ConvertVector(screen)).Magnitude
+        if dist < required then
+            required = dist
+            Environment.Locked = player
         end
     end
 end
 
+-- Main logic
 local function Load()
-    Visuals.AddCrosshair()
+    ServiceConnections = Environment.Connections
 
-    Players.PlayerAdded:Connect(Wrap)
-    Players.PlayerRemoving:Connect(UnWrap)
+    ServiceConnections.Render = RunService[Environment.DeveloperSettings.UpdateMode]:Connect(function()
+        local s = Environment.Settings
+        local f = Environment.FOVSettings
 
-    -- Periodic re-wrap (safer interval)
-    spawn(function()
-        while true do
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer then Wrap(plr) end
+        -- Update FOV circle
+        if f.Enabled and s.Enabled then
+            local pos = GetCursorPos()
+            Environment.FOVCircle.Position         = pos
+            Environment.FOVCircle.Radius           = f.Radius
+            Environment.FOVCircle.NumSides         = f.NumSides
+            Environment.FOVCircle.Thickness        = f.Thickness
+            Environment.FOVCircle.Transparency     = f.Transparency
+            Environment.FOVCircle.Filled           = f.Filled
+            Environment.FOVCircle.Visible          = f.Visible
+
+            Environment.FOVCircleOutline.Position      = pos
+            Environment.FOVCircleOutline.Radius        = f.Radius + f.Thickness + 2
+            Environment.FOVCircleOutline.Thickness     = f.Thickness + 1.5
+            Environment.FOVCircleOutline.Transparency  = f.Transparency * 0.7
+            Environment.FOVCircleOutline.Visible       = f.Visible
+
+            Environment.FOVCircle.Color = Environment.Locked and f.LockedColor or f.RainbowColor and GetRainbowColor() or f.Color
+            Environment.FOVCircleOutline.Color = f.RainbowOutlineColor and GetRainbowColor() or f.OutlineColor
+        else
+            Environment.FOVCircle.Visible       = false
+            Environment.FOVCircleOutline.Visible = false
+        end
+
+        if not s.Enabled then return end
+
+        GetClosestPlayer()
+
+        if Environment.Locked then
+            local char = Environment.Locked.Character
+            if not char then CancelLock() return end
+
+            local part = char:FindFirstChild(s.LockPart)
+            if not part then CancelLock() return end
+
+            local offset = s.OffsetToMoveDirection and (char.Humanoid.MoveDirection * (s.OffsetIncrement / 10)) or Vector3zero
+            local targetPos = part.Position + offset
+
+            local currentLook = Camera.CFrame.LookVector
+            local toTarget    = (targetPos - Camera.CFrame.Position).Unit
+
+            local angle = mathdeg(mathacos(currentLook:Dot(toTarget)))
+
+            if angle > s.AimAssistDeadzone then
+                local strength = mathclamp(s.AimAssistStrength, 0.01, 0.6)
+                local assisted = currentLook:Lerp(toTarget, strength)
+
+                local newCF = CFrame.lookAt(Camera.CFrame.Position, Camera.CFrame.Position + assisted * 200)
+                Camera.CFrame = Camera.CFrame:Lerp(newCF, s.SmoothingFactor)
             end
-            task.wait(25)
         end
     end)
+
+    -- Input handling (supports mouse + gamepad)
+    ServiceConnections.InputBegan = UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+
+        local key = s.TriggerKey
+        local isTrigger = (input.UserInputType == key) or (input.KeyCode == key)
+
+        -- Gamepad support - example: Right Trigger or Right Bumper
+        if IsController() and (input.UserInputType == Enum.UserInputType.Gamepad1) then
+            if input.KeyCode == Enum.KeyCode.ButtonR2 or input.KeyCode == Enum.KeyCode.ButtonR1 then
+                isTrigger = true
+            end
+        end
+
+        if isTrigger then
+            if s.Toggle then
+                Running = not Running
+                if not Running then CancelLock() end
+            else
+                Running = true
+            end
+        end
+    end)
+
+    ServiceConnections.InputEnded = UserInputService.InputEnded:Connect(function(input)
+        local key = s.TriggerKey
+        local isTrigger = (input.UserInputType == key) or (input.KeyCode == key)
+
+        if IsController() and (input.UserInputType == Enum.UserInputType.Gamepad1) then
+            if input.KeyCode == Enum.KeyCode.ButtonR2 or input.KeyCode == Enum.KeyCode.ButtonR1 then
+                isTrigger = true
+            end
+        end
+
+        if not s.Toggle and isTrigger then
+            Running = false
+            CancelLock()
+        end
+    end)
+
+    -- Typing detection
+    ServiceConnections.TypingStart = UserInputService.TextBoxFocused:Connect(function() Typing = true end)
+    ServiceConnections.TypingEnd   = UserInputService.TextBoxFocusReleased:Connect(function() Typing = false end)
 end
 
 -- Public API
-Environment.Functions = {
-    Exit = function()
-        -- cleanup all connections, drawings, etc.
-        for _, conn in pairs(ServiceConnections) do pcall(conn.Disconnect, conn) end
-        for _, part in pairs(Environment.Crosshair.Parts) do pcall(part.Remove, part) end
-        for _, plr in ipairs(Players:GetPlayers()) do UnWrap(plr) end
-        getgenv().AirHub.WallHack = nil
-    end,
-    Restart = function()
-        for _, plr in ipairs(Players:GetPlayers()) do UnWrap(plr) end
-        Load()
-    end,
-}
+function Environment.Exit()
+    for _, conn in pairs(ServiceConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    Environment.FOVCircle:Remove()
+    Environment.FOVCircleOutline:Remove()
+    getgenv().ExunysDeveloperAimbot = nil
+end
 
-Load()
+function Environment.Restart()
+    for _, conn in pairs(ServiceConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    Load()
+end
 
-print("[AirHub WallHack] Loaded - Controller + PC compatible")
+function Environment.Load()
+    Load()
+end
+
+Environment.Load()
+
+print("[Exunys Aimbot] Loaded | PC + Controller support | Strength: " .. Environment.Settings.AimAssistStrength)
