@@ -1,6 +1,6 @@
 -- ESP Boxes (fixed - no collapsing to line when facing directly)
 
-getgenv().chams = {
+getgenv().ESPBoxes = {
 	Enabled = false,
 	TeamCheck = false,
 	AliveCheck = true,
