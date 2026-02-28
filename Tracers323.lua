@@ -1,5 +1,5 @@
 
-getgenv().plat = {
+getgenv().Trace = {
     Enabled = false,                -- change here or live
     TeamCheck = false,             -- true = hide teammates
     Color = Color3.fromRGB(255, 50, 50),  -- red
