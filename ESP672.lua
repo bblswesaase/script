@@ -717,7 +717,7 @@ if Environment.Settings.ReloadOnTeleport then
 	local queueonteleport = queue_on_teleport or syn.queue_on_teleport
 
 	if queue_on_teleport then
-		queue_on_teleport(game:HttpGet("https://raw.githubusercontent.com/bblswesaase/script/refs/heads/main/ESP67.lua"))
+		queue_on_teleport(game:HttpGet("https://raw.githubusercontent.com/bblswesaase/script/refs/heads/main/ESP672.lua"))
 	else
 		SendNotification(Title, "Your exploit does not support \"syn.queue_on_teleport()\"")
 	end
