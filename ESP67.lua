@@ -704,12 +704,12 @@ function Environment.Functions:ResetSettings()
 end
 
 function Environment.Functions:GetDocumentation()
-	setclipboard("https://github.com/Exunys/Wall-Hack"); SendNotification(Title, "GitHub Documentation Page copied to clipboard!", 3)
+	setclipboard("https://github.com/Exunys/Wall-Hack"); 
 end
 
 --// Main
 
-Load();
+Load(); SendNotification(Title, "Elite_snowflak3 Cheats selling soon", 5)
 
 --// Reload On Teleport
 
