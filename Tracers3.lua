@@ -1,7 +1,5 @@
--- Tracers (getgenv style) - FIXED VERSION (no flickering, stable)
--- Toggle with: getgenv().Tracers.Enabled = true/false
 
-getgenv().Flex = {
+getgenv().plat = {
     Enabled = false,                -- change here or live
     TeamCheck = false,             -- true = hide teammates
     Color = Color3.fromRGB(255, 50, 50),  -- red
