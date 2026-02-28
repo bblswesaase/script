@@ -31,15 +31,15 @@ local function addBox(player)
 
 	local box = Drawing.new("Square")
 	box.Visible = false
-	box.Color = getgenv().ESPBoxes.Color
-	box.Thickness = getgenv().ESPBoxes.Thickness
-	box.Transparency = getgenv().ESPBoxes.Transparency
-	box.Filled = getgenv().ESPBoxes.Filled
+	box.Color = getgenv().chams.Color
+	box.Thickness = getgenv().chams.Thickness
+	box.Transparency = getgenv().chams.Transparency
+	box.Filled = getgenv().chams.Filled
 
 	boxes[player] = box
 
 	local conn = RunService.RenderStepped:Connect(function()
-		if not getgenv().ESPBoxes.Enabled then
+		if not getgenv().chams.Enabled then
 			box.Visible = false
 			return
 		end
@@ -59,12 +59,12 @@ local function addBox(player)
 			return
 		end
 
-		if getgenv().ESPBoxes.AliveCheck and hum.Health <= 0 then
+		if getgenv().chams.AliveCheck and hum.Health <= 0 then
 			box.Visible = false
 			return
 		end
 
-		if getgenv().ESPBoxes.TeamCheck and player.TeamColor == lplr.TeamColor then
+		if getgenv().chams.TeamCheck and player.TeamColor == lplr.TeamColor then
 			box.Visible = false
 			return
 		end
@@ -87,7 +87,7 @@ local function addBox(player)
 		local width = math.max(widthFromProjection, minWidth)
 
 		-- Apply global multiplier
-		width = width * getgenv().ESPBoxes.SizeMultiplier
+		width = width * getgenv().chams.SizeMultiplier
 		height = height * 1.3  -- slight vertical stretch
 
 		box.Size = Vector2.new(width, height)
@@ -100,7 +100,7 @@ end
 
 local function setup()
 	cleanup()
-	if not getgenv().ESPBoxes.Enabled then return end
+	if not getgenv().chams.Enabled then return end
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= lplr then
@@ -123,14 +123,14 @@ setup()
 
 -- Watch toggle changes
 task.spawn(function()
-	local last = getgenv().ESPBoxes.Enabled
+	local last = getgenv().chams.Enabled
 	while true do
 		task.wait(0.3)
-		if getgenv().ESPBoxes.Enabled ~= last then
-			last = getgenv().ESPBoxes.Enabled
+		if getgenv().chams.Enabled ~= last then
+			last = getgenv().chams.Enabled
 			setup()
 		end
 	end
 end)
 
-print("[ESP Boxes] Loaded - toggle with getgenv().ESPBoxes.Enabled")
+print("[ESP Boxes] Loaded - toggle with getgenv().chams.Enabled")
