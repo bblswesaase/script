@@ -1,102 +1,113 @@
-getgenv().Flex = {
-    Enabled = false,
-    TeamCheck = false,
-    Color = Color3.fromRGB(255, 50, 50),
-    Thickness = 1.5,
-    Transparency = 1,
-    Origin = "Bottom"
+
+getgenv().chams = {
+    enabled = false, 
+    outlineColor = Color3.fromRGB(255, 255, 255),
+    fillColor = Color3.fromRGB(0, 0, 0), 
+    fillTransparency = 1, 
+    outlineTransparency = 0, 
+    teamCheck = false 
 }
 
+
+
+
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local lplr = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local activeHighlights = {} 
 
-local tracers = {}
-local connections = {}
-
-local function cleanup()
-    for _, conn in pairs(connections) do pcall(conn.Disconnect, conn) end
-    for _, line in pairs(tracers) do pcall(line.Remove, line) end
-    tracers = {}
-    connections = {}
+local function isOnSameTeam(player)
+    if getgenv().chams.teamCheck then
+        return player.TeamColor == LocalPlayer.TeamColor
+    end
+    return false
 end
 
-local function addTracer(player)
-    if player == lplr then return end
-    local line = Drawing.new("Line")
-    line.Visible = false
-    line.Color = getgenv().Flex.Color
-    line.Thickness = getgenv().Flex.Thickness
-    line.Transparency = getgenv().Flex.Transparency
-    tracers[player] = line
-    local conn = RunService.RenderStepped:Connect(function()
-        if not getgenv().Flex.Enabled then
-            line.Visible = false
-            return
-        end
-        if not player.Character then
-            line.Visible = false
-            return
-        end
-        local root = player.Character:FindFirstChild("HumanoidRootPart")
-        local hum = player.Character:FindFirstChildOfClass("Humanoid")
-        if not root or not hum or hum.Health <= 0 then
-            line.Visible = false
-            return
-        end
-        if getgenv().Flex.TeamCheck and player.TeamColor == lplr.TeamColor then
-            line.Visible = false
-            return
-        end
-        local vector, onScreen = camera:WorldToViewportPoint(root.Position)
-        if onScreen then
-            local from
-            if getgenv().Flex.Origin == "Bottom" then
-                from = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
-            elseif getgenv().Flex.Origin == "Center" then
-                from = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-            else
-                from = UIS:GetMouseLocation()
-            end
-            line.From = from
-            line.To = Vector2.new(vector.X, vector.Y)
-            line.Visible = true
-        else
-            line.Visible = false
-        end
-    end)
-    table.insert(connections, conn)
+local function createHighlight(character)
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = character
+    highlight.FillTransparency = getgenv().chams.fillTransparency
+    highlight.FillColor = getgenv().chams.fillColor
+    highlight.OutlineColor = getgenv().chams.outlineColor
+    highlight.OutlineTransparency = getgenv().chams.outlineTransparency
+    highlight.Parent = character
+    return highlight
 end
 
-local function setupTracers()
-    cleanup()
-    if not getgenv().Flex.Enabled then return end
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= lplr then
-            task.spawn(function()
-                if player.Character then addTracer(player) end
-                player.CharacterAdded:Connect(function() addTracer(player) end)
-            end)
+local function removeHighlight(character)
+    local highlight = character:FindFirstChildOfClass("Highlight")
+    if highlight then
+        highlight:Destroy()
+    end
+end
+
+local function applyHighlight(player)
+    if player == LocalPlayer or isOnSameTeam(player) then return end
+
+    local character = player.Character
+    if character then
+        removeHighlight(character) 
+        local highlight = createHighlight(character)
+        activeHighlights[player] = highlight
+    end
+end
+
+local function removeAllHighlights()
+    for player, _ in pairs(activeHighlights) do
+        if player.Character then
+            removeHighlight(player.Character)
         end
     end
-    table.insert(connections, Players.PlayerAdded:Connect(function(player)
-        if player ~= lplr then
-            player.CharacterAdded:Connect(function() addTracer(player) end)
-        end
-    end))
+    activeHighlights = {}
 end
 
-setupTracers()
+local function monitorPlayers()
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if getgenv().chams.enabled then
+            applyHighlight(player)
+        else
+            if player.Character then
+                removeHighlight(player.Character)
+            end
+        end
+    end
+end
+
+
+local function onPlayerAdded(player)
+    player.CharacterAdded:Connect(function(character)
+        if getgenv().chams.enabled then
+            applyHighlight(player)
+        end
+    end)
+
+    if player.Character and getgenv().chams.enabled then
+        applyHighlight(player)
+    end
+end
+
+local function onPlayerRemoving(player)
+    if player.Character then
+        removeHighlight(player.Character)
+    end
+    activeHighlights[player] = nil
+end
+
 
 task.spawn(function()
-    local last = getgenv().Flex.Enabled
-    while true do
-        task.wait(0.3)
-        if getgenv().Flex.Enabled ~= last then
-            last = getgenv().Flex.Enabled
-            setupTracers()
+    while task.wait(0.1) do
+        if getgenv().chams.enabled then
+            monitorPlayers()
+        else
+            removeAllHighlights()
         end
     end
 end)
+
+
+for _, player in ipairs(Players:GetPlayers()) do
+    onPlayerAdded(player)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(onPlayerRemoving)
